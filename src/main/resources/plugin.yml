@@ -1,0 +1,11 @@
+name: shiftkill
+version: 114514.1919810
+main: gay.shiftkill.Shiftkill
+api-version: '1.20'
+author: leo728
+description: 撅到死(男同
+commands:
+  shiftkill:
+    description: Reload Shiftkill configuration
+    usage: /shiftkill reload
+    permission: shiftkill.reload
