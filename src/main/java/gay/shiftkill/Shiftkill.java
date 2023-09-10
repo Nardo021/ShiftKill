@@ -17,9 +17,10 @@ import java.util.Map;
 
 public class Shiftkill extends JavaPlugin implements Listener {
 
-    private final Map<Player, Player> attackers = new HashMap<>();
+    private final Map<Player, Double> progressBars = new HashMap<>();
+    private final double progressBarIncrement = 10.0; // 进度条每次增加的值
     private ConfigManager configManager;
-    private Buffermilk buffermilk;
+    private Map<Player, Player> shifters = new HashMap<>();
 
     @Override
     public void onEnable() {
@@ -38,76 +39,92 @@ public class Shiftkill extends JavaPlugin implements Listener {
         // 注册指令
         getCommand("shiftkill").setExecutor(this);
 
-        // 初始化 Buffermilk 类，并将插件实例传递给它
-        //buffermilk = new Buffermilk(this);
-
         // 发送启用消息
-        getLogger().info("ShiftKill已启用！你可以撅死人了（确信");
+        getLogger().info("ShiftKill已启用！你可以积攒进度条击杀玩家了！");
     }
 
     @Override
     public void onDisable() {
         // 发送关闭消息
-        getLogger().info("ShiftKill已关闭！你撅不了别人了（悲");
+        getLogger().info("ShiftKill已关闭！");
     }
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (label.equalsIgnoreCase("shiftkill")) {
             if (args.length == 1 && args[0].equalsIgnoreCase("reload")) {
-                // Check if the sender has permission to reload the config
+                // 检查发送者是否有重新加载配置的权限
                 if (sender instanceof Player) {
                     Player player = (Player) sender;
                     if (!player.hasPermission("shiftkill.reload")) {
-                        player.sendMessage(ChatColor.RED + "You don't have permission to use this command.");
+                        player.sendMessage(ChatColor.RED + "你没有权限使用此命令。");
                         return true;
                     }
                 }
-                // Reload the configuration
+                // 重新加载配置
                 configManager.setupConfig();
-                sender.sendMessage(ChatColor.GREEN + "Shiftkill 重载成功，你又可以撅人了（喜");
+                sender.sendMessage(ChatColor.GREEN + "Shiftkill 配置已重新加载！");
                 return true;
             }
         }
         return false;
     }
 
-
     @EventHandler
     public void onPlayerSneak(PlayerToggleSneakEvent event) {
         Player sneaker = event.getPlayer();
-        if (!sneaker.isSneaking()) {
-            return; // 玩家不再潜行，不执行任何操作
-        }
+        Player shifter = shifters.get(sneaker);
 
-        Player target = attackers.get(sneaker);
-
-        // 如果目标不为空并且仍然存活，执行伤害操作
-        if (target != null && !target.isDead()) {
-            // 检查玩家之间的距离
-            double distance = sneaker.getLocation().distance(target.getLocation());
-
-            // 检查玩家之间的距离是否小于1个方块的长度（考虑方块的尺寸）
-            if (distance < 1.3) { // 方块的长度约为1.3
-                // 扣血
-                double damageAmount = 2.0; // 每次扣血的数量
-                target.damage(damageAmount);
-
-                if (target.getHealth() <= 0) {
-                    // 目标玩家死亡
-                    generateNamedItem(target.getLocation(), target.getName()); // 在死亡玩家的位置生成带有名称的物品
-                    Bukkit.broadcastMessage(target.getName() + "被" + sneaker.getName() + "撅死了！");
-                    target.setHealth(0);
-                    attackers.remove(sneaker); // 移除攻击者
+        if (event.isSneaking()) {
+            // 玩家按下Shift键
+            if (shifter != null) {
+                // 已有玩家积攒进度条，不执行任何操作
+            } else {
+                // 玩家按下Shift键并且没有积攒进度条的目标
+                Player target = getTarget(sneaker);
+                if (target != null && !target.isDead()) {
+                    // 将玩家设置为积攒进度条的目标
+                    shifters.put(sneaker, target);
+                    target.sendMessage(ChatColor.RED + "你正在被 " + sneaker.getName() + " 撅！享受吧！");
+                    sneaker.sendMessage(ChatColor.YELLOW + "你正在积攒进度条...");
                 }
             }
         } else {
-            // 获取潜行者后面的玩家
-            Player newTarget = getTarget(sneaker);
-            if (newTarget != null) {
-                attackers.put(sneaker, newTarget); // 记录攻击目标
+            // 玩家松开Shift键
+            if (shifter != null) {
+                // 检查玩家之间的距离
+                double distance = sneaker.getLocation().distance(shifter.getLocation());
+
+                if (distance > 2.0) {
+                    // 玩家相距超过2格，重置进度条为零
+                    progressBars.remove(sneaker);
+                    sneaker.sendMessage(ChatColor.RED + "进度条已重置为零，你和目标相距太远！");
+                } else {
+                    double progress = progressBars.getOrDefault(sneaker, 0.0);
+                    progress += progressBarIncrement;
+
+                    if (progress >= 100.0) {
+                        // 进度条已满，执行击杀操作
+                        Player target = shifters.get(sneaker);
+                        target.setHealth(0); // 杀死前面的玩家
+                        sneaker.sendMessage(ChatColor.GREEN + "你成功击杀了 " + target.getName() + "!");
+                        progressBars.remove(sneaker);
+                        shifters.remove(sneaker);
+                    } else {
+                        // 更新进度条
+                        progressBars.put(sneaker, progress);
+                        sneaker.sendMessage(ChatColor.YELLOW + "进度条: " + progress + "%");
+                    }
+                }
             }
         }
+    }
+
+    @EventHandler
+    public void onPlayerDeath(PlayerDeathEvent event) {
+        Player player = event.getEntity();
+        progressBars.remove(player); // 玩家死亡时清零进度条
+        shifters.values().remove(player); // 移除积攒目标
     }
 
     // 获取潜行者后面的玩家
@@ -129,20 +146,5 @@ public class Shiftkill extends JavaPlugin implements Listener {
             }
         }
         return null;
-    }
-
-    // 生成带有名称的物品在指定位置
-    private void generateNamedItem(Location location, String playerName) {
-        ItemStack itemStack = new ItemStack(configManager.getDropMaterial());
-        ItemMeta itemMeta = itemStack.getItemMeta();
-        itemMeta.setDisplayName(playerName + "的精华");
-        itemStack.setItemMeta(itemMeta);
-
-        location.getWorld().dropItemNaturally(location, itemStack);
-    }
-
-    @EventHandler
-    public void onPlayerDeath(PlayerDeathEvent event) {
-        // 在玩家死亡时触发，你可以在这里添加额外的处理逻辑
     }
 }

@@ -1,8 +1,8 @@
 <component name="ArtifactManager">
   <artifact type="jar" name="shiftkill:jar">
     <output-path>$PROJECT_DIR$/out/artifacts/shiftkill_jar</output-path>
-    <root id="archive" name="shiftkill.jar">
-      <element id="module-output" name="shiftkill.main" />
+    <root id="archive" name="ShiftKill.jar">
+      <element id="module-output" name="gay.shiftkill.shiftkill.main" />
       <element id="dir-copy" path="$PROJECT_DIR$/src/main/resources" />
     </root>
   </artifact>
